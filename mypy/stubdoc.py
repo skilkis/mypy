@@ -11,7 +11,9 @@ import io
 import keyword
 import re
 import tokenize
-from typing import Any, Final, MutableMapping, MutableSequence, NamedTuple, Sequence, Tuple
+from typing import (Any, Final, MutableMapping, MutableSequence, NamedTuple,
+                    Sequence, Tuple)
+
 from typing_extensions import TypeAlias as _TypeAlias
 
 import mypy.util
@@ -22,6 +24,7 @@ Sig: _TypeAlias = Tuple[str, str]
 
 _TYPE_RE: Final = re.compile(r"^[a-zA-Z_][\w\[\], .\"\']*(\.[a-zA-Z_][\w\[\], ]*)*$")
 _ARG_NAME_RE: Final = re.compile(r"\**[A-Za-z_][A-Za-z0-9_]*$")
+_NAME_RE: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def is_valid_type(s: str) -> bool:
@@ -30,7 +33,15 @@ def is_valid_type(s: str) -> bool:
         return False
     if "," in s and "[" not in s:
         return False
+    if "::" in s:
+        return False
     return _TYPE_RE.match(s) is not None
+
+
+def is_valid_name(s: str) -> bool:
+    if keyword.iskeyword(s):
+        return False
+    return _NAME_RE.match(s) is not None
 
 
 class ArgSig:
@@ -159,6 +170,7 @@ STATE_ARGUMENT_TYPE: Final = 4
 STATE_ARGUMENT_DEFAULT: Final = 5
 STATE_RETURN_VALUE: Final = 6
 STATE_OPEN_BRACKET: Final = 7  # For generic types.
+STATE_OPEN_CARET: Final = 8  # For leaking C++ templated types
 
 
 class DocStringParser:
@@ -219,6 +231,22 @@ class DocStringParser:
 
         elif (
             token.type == tokenize.OP
+            and token.string == "<"
+            and self.state[-1] in (STATE_ARGUMENT_TYPE, STATE_OPEN_CARET, STATE_RETURN_VALUE)
+        ):
+            self.accumulator += token.string
+            self.state.append(STATE_OPEN_CARET)
+
+        elif (
+            token.type == tokenize.OP
+            and token.string == ">"
+            and self.state[-1] == STATE_OPEN_CARET
+        ):
+            self.accumulator += token.string
+            self.state.pop()
+
+        elif (
+            token.type == tokenize.OP
             and token.string == ":"
             and self.state[-1] == STATE_ARGUMENT_LIST
         ):
@@ -265,6 +293,10 @@ class DocStringParser:
 
             # arg_name is empty when there are no args. e.g. func()
             if self.arg_name:
+                if not is_valid_name(self.arg_name):
+                    self.reset()
+                    return
+
                 if self.arg_type and not is_valid_type(self.arg_type):
                     # wrong type, use Any
                     self.args.append(
@@ -292,9 +324,9 @@ class DocStringParser:
         ):
             if self.state[-1] == STATE_RETURN_VALUE:
                 if not is_valid_type(self.accumulator):
-                    self.reset()
-                    return
-                self.ret_type = self.accumulator
+                    self.ret_type = "Any"
+                else:
+                    self.ret_type = self.accumulator
                 self.accumulator = ""
                 self.state.pop()
 

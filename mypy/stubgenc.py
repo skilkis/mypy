@@ -26,6 +26,7 @@ from mypy.stubdoc import (
     infer_ret_type_sig_from_anon_docstring,
     infer_ret_type_sig_from_docstring,
     infer_sig_from_docstring,
+    is_valid_name,
     parse_all_signatures,
 )
 from mypy.stubutil import (
@@ -793,6 +794,9 @@ class InspectionStubGenerator(BaseStubGenerator):
         The result lines will be appended to 'output'. If necessary, any
         required names will be added to 'imports'.
         """
+        if not is_valid_name(class_name):
+            return None  # Prevent generating stub for invalid class name
+
         raw_lookup: Mapping[str, Any] = getattr(cls, "__dict__")  # noqa: B009
         items = self.get_members(cls)
         if self.resort_members:

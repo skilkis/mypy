@@ -428,6 +428,38 @@ class StubgenUtilSuite(unittest.TestCase):
             == []
         )
 
+    def test_infer_sig_from_docstring_cpp_type(self) -> None:
+        assert_equal(
+            infer_sig_from_docstring("\nfunc(x: mycpp::MyClass<3, std::integer>, y: int)", "func"),
+            [
+                FunctionSig(
+                    name="func",
+                    args=[
+                        ArgSig(name="x", type=None, default=False),
+                        ArgSig(name="y", type="int", default=False),
+                    ],
+                    ret_type="Any",
+                )
+            ],
+        )
+
+        assert_equal(
+            infer_sig_from_docstring(
+                "\ndef func(x: mycpp::MyClass<3, int*>, y: int) -> Hello<3, std::string, const int&>",
+                "func",
+            ),
+            [
+                FunctionSig(
+                    name="func",
+                    args=[
+                        ArgSig(name="x", type=None, default=False),
+                        ArgSig(name="y", type="int", default=False),
+                    ],
+                    ret_type="Any",
+                )
+            ],
+        )
+
     def test_remove_misplaced_type_comments_1(self) -> None:
         good = """
         \u1234
